@@ -6,6 +6,10 @@ const webpack = require("webpack");
 
 let commonConfig = {
   devtool: 'inline-source-map',
+  node: {
+    __dirname: false,
+    __filename: false,
+  },
   resolve: {
     alias: {
       'vue$': 'vue/dist/vue.esm.js'
@@ -14,7 +18,7 @@ let commonConfig = {
   }
 }
 
-let browserRules = [
+let rules = [
   {
     test: /\.ts$/,
     loader: 'awesome-typescript-loader'
@@ -45,49 +49,11 @@ let browserRules = [
   }
 ]
 
-function HashReplace() {}
-HashReplace.prototype.apply = function(compiler) {
-  compiler.plugin('emit', function(compilation, callback) {
-
-    let replaceRegexes = new Map([
-      ['styles.css', /^styles\.[a-f0-9]+\.css$/],
-      ['bundle.js', /^bundle\.[a-f0-9]+\.js$/]
-    ])
-
-    if ('../index.html' in compilation.assets){
-      let replace = new Map();
-      replaceRegexes.forEach(function (regex, fileName){
-        compilation.chunks.forEach(function(chunk) {
-          chunk.files.forEach(function(emittedFileName) {
-            if (emittedFileName.match(regex)){
-              replace.set(fileName, emittedFileName)
-            }
-          })
-        })
-      })
-
-      let indexAsset = compilation.assets['../index.html']
-      let sourceFn = indexAsset.source;
-      let newSourceFn = () => {
-        let sourceStr = sourceFn().toString('utf8')
-        replace.forEach(function (emittedFileName, fileName){
-          sourceStr = sourceStr.replace(fileName, emittedFileName)
-        })
-        return Buffer.from(sourceStr, 'utf8')
-      }
-      indexAsset.source = newSourceFn
-      indexAsset.size = () => newSourceFn().length
-    }
-
-    callback()
-
-  })
-}
-
 let devConfig = {
+  target: 'electron-renderer',
   module: {
     rules: [
-      ...browserRules,
+      ...rules,
       {
         test: /\.css$/,
         use: ExtractTextPlugin.extract({
@@ -103,8 +69,6 @@ let devConfig = {
     app: [
       'webpack-dev-server/client?/',
       'webpack/hot/only-dev-server',
-      'es6-shim',
-      'whatwg-fetch',
       './src/index',
     ]
   },
@@ -113,13 +77,13 @@ let devConfig = {
     new webpack.NamedModulesPlugin(),
     new ExtractTextPlugin("styles.css"),
     new webpack.DefinePlugin({
-      'BUILD_DEVENV': JSON.stringify(process.env.DEVENV || 'local'),
-      'RUNTIME_ENV': JSON.stringify('browser'),
+      'NODE_ENV': JSON.stringify(process.env.NODE_ENV),
     })
   ],
   output: {
     filename: 'bundle.js',
-    publicPath: '/assets/'
+    publicPath: '',
+    path: path.resolve(__dirname, 'dist')
   },
   devServer: {
     host: '0.0.0.0',
@@ -136,9 +100,10 @@ let devConfig = {
 }
 
 let prodConfig = {
+  target: 'electron-renderer',
   module: {
     rules: [
-      ...browserRules,
+      ...rules,
       {
         test: /\.css$/,
         use: ExtractTextPlugin.extract({
@@ -152,81 +117,66 @@ let prodConfig = {
   },
   entry: {
     app: [
-      'es6-shim',
-      'whatwg-fetch',
       './src/index',
     ]
   },
   plugins: [
-    new webpack.optimize.UglifyJsPlugin(),
-    new ExtractTextPlugin("styles.[contenthash].css"),
+    // new webpack.optimize.UglifyJsPlugin(), // es2015 not supported yet
+    new ExtractTextPlugin('styles.css'),
     new CopyWebpackPlugin([{
       from: path.resolve(__dirname, 'src', 'public'),
       to: path.resolve(__dirname, 'dist')
     }]),
     new webpack.DefinePlugin({
-      'BUILD_DEVENV': JSON.stringify(process.env.DEVENV || 'local'),
-      'RUNTIME_ENV': JSON.stringify('browser'),
-    }),
-    new HashReplace()
+      'NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+    })
   ],
   output: {
-    filename: 'bundle.[chunkhash].js',
-    publicPath: '/assets/',
-    path: path.resolve(__dirname, 'dist', 'assets')
+    filename: 'bundle.js',
+    publicPath: '',
+    path: path.resolve(__dirname, 'dist')
   }
 }
 
-let ssrConfig = {
+let electronConfig = {
+  target: 'electron-main',
+  entry: {
+    app: [
+      './src/electron',
+    ]
+  },
   module: {
     rules: [
       {
         test: /\.ts$/,
-        loader: 'awesome-typescript-loader',
-        options: {
-          configFileName: "tsconfig.ssr.json"
-        }
-      },
-      {
-        test: /\.html$/,
-        loader: 'html-loader'
-      },
-      {
-        test: /\.css$/,
-        loader: 'null-loader'
+        loader: 'awesome-typescript-loader'
       }
-    ],
-  },
-  entry: {
-    app: [
-      './server'
     ]
   },
   plugins: [
+    new WriteFilePlugin(),
+    new CopyWebpackPlugin([{
+      from: path.resolve(__dirname, 'src', 'public', 'index.html'),
+      to: path.resolve(__dirname, 'dist', 'index.html')
+    }]),
     new webpack.DefinePlugin({
-      'BUILD_DEVENV': JSON.stringify(process.env.DEVENV || 'local'),
-      'RUNTIME_ENV': JSON.stringify('server'),
-    }),
-    new WriteFilePlugin()
+      'NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+    })
   ],
   output: {
-    filename: 'server.js',
-    path: path.resolve(__dirname, 'dist-ssr')
-  },
-  devServer: {
-    outputPath: path.resolve(__dirname, 'dist-ssr')
-  },
-  target: 'node'
+    filename: 'main.js',
+    path: path.resolve(__dirname, 'dist')
+  }
 }
 
 if (process.env.NODE_ENV === 'production') {
   module.exports = [
     Object.assign({}, commonConfig, prodConfig),
-    Object.assign({}, commonConfig, ssrConfig)
+    Object.assign({}, commonConfig, electronConfig)
   ]
 } else {
   module.exports = [
     Object.assign({}, commonConfig, devConfig),
-    Object.assign({}, commonConfig, ssrConfig)
+    Object.assign({}, commonConfig, electronConfig),
   ]
 }
