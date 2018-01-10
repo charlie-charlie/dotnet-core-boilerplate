@@ -1,14 +1,11 @@
 import Vue from 'vue'
 import { Route } from 'vue-router'
 import DotvueComponent from '../dotvue/DotvueComponent'
-import DotvueInitialData from '../dotvue/DotvueInitialData'
 import Post from '../models/Post'
 import PostRepository from '../repositories/PostsRepository'
 import ListTemplate from '../views/posts/list.html'
 import ViewTemplate from '../views/posts/view.html'
 import PostList from '../components/post-list/PostList'
-
-const dataKeyList = "posts/list"
 
 @DotvueComponent(module, {
     template: ListTemplate,
@@ -18,40 +15,50 @@ export class List extends Vue {
 
     public posts = new Array<Post>();
 
-    public async beforeRouteEnter(to: any, from: any, next: any) {
-        let initialData = new DotvueInitialData<object[]>(to, dataKeyList)
-        await initialData.Set(PostRepository.all)
-        next(true)
+    public static async loadDataAsyncStatic(to: Route) {
+        return await PostRepository.all()
+    }
+    public loadDataAsync(to: Route){
+        return List.loadDataAsyncStatic(to);
     }
 
-    public created() {
-        this.posts = Post.convertAll(DotvueInitialData.Get<object[]>(this, dataKeyList))
+    public static data: Post[]
+    public async beforeRouteEnter(to: Route, from: Route, next: any){
+        List.data = Post.convertAll(await List.loadDataAsyncStatic(to))
+        next()
     }
-
+    
+    public created(){
+        this.posts = List.data
+    }
 }
-
-const dataKeyView = "posts/view"
 
 @DotvueComponent(module, {
     template: ViewTemplate
 })
 export class View extends Vue {
 
-    public post = new Post();
+    public post: Post
 
-    public async beforeRouteEnter(to: Route, from: Route, next: any) {
-        let initialData = new DotvueInitialData<object>(to, dataKeyView)
-        await initialData.Set(async () => { return await PostRepository.one(Number(to.params.id)) })
-        next(true)
+    public static async loadDataAsyncStatic(to: Route) {
+        return await PostRepository.one(Number(to.params.id))
+    }
+    public loadDataAsync(to: Route){
+        return View.loadDataAsyncStatic(to);
     }
 
-    public async beforeRouteUpdate(to: Route, from: Route, next: any) {
-        this.post = new Post(await PostRepository.one(Number(to.params.id)))
-        next(true)
+    public static data: Post
+    public async beforeRouteEnter(to: Route, from: Route, next: any){
+        View.data = new Post(await View.loadDataAsyncStatic(to))
+        next()
+    }
+
+    public async beforeRouteUpdate(to: Route, from: Route, next: any){
+        this.post = new Post(await View.loadDataAsyncStatic(to))
+        next()
     }
 
     public created() {
-        this.post = new Post(DotvueInitialData.Get<object>(this, dataKeyView))
+        this.post = View.data
     }
-
 }

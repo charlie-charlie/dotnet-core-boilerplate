@@ -26,20 +26,62 @@ export default class DotvueApp {
             }
         })
 
-        router.beforeResolve((to: Route, from: Route, next: any) => {
-            let initialData = routeInitialDataMap.get(to);
-            if (initialData) {
-                routeInitialDataMap.delete(to);
-                this.initialData.set(initialData.key, initialData)
-            }
-            next()
+        this.initLoad = new Promise((resolve, reject) => {
+            router.onReady(resolve, reject)
         })
 
-        this.initLoad = new Promise((resolve, reject) => {
-            router.onReady(async () => {
-                resolve()
+        router.beforeEach(async (to: Route, from: Route, next: any) => {
+            let matchedComponents = router.getMatchedComponents()
+
+            if (!matchedComponents.length) {
+                throw new Error("Not found")
+            }
+
+            let promises = new Array<Promise<void>>();
+            let i=0
+
+            let initialData = this.initialData
+            let ssrData = this.ssrData
+            
+            matchedComponents.map(Component => {
+                let dotvueLoadDataAsyncFunction = (Component as any).options.methods.DotvueLoadDataAsync
+                if (dotvueLoadDataAsyncFunction) {
+                    promises.push((async (key: string) => {
+                        if (ssrData[key]){
+                            initialData.set(key, ssrData[key])
+                            delete ssrData[key]
+                        } else {
+                            let data = await dotvueLoadDataAsyncFunction(to)
+                            initialData.set(key, data)
+                            ssrData[key] = data
+                        }
+                        (Component as any).options.methods.loadDataAsync = (to:Route) => {
+                            console.log("overridden")
+                            if (initialData.has(key)){
+                                let data = initialData.get(key)
+                                initialData.delete(key)
+                                console.log("from SSR")
+                                return data
+                            }
+                            console.log("from Source")
+                            return loadDataAsyncFunction(to);
+                        }
+                    })(String(i)))
+                    i++
+                }
             })
+
+        await Promise.all<void>(promises)
+            next(true)
         })
+
+        router.afterEach((to: Route, from: Route) => {
+
+        })
+    }
+
+    private async _beforeRoute(router: VueRouter, resolve: any, reject: any) {
+        
     }
 
 }

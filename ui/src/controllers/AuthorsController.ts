@@ -2,35 +2,37 @@ import Vue from 'vue'
 import { Route } from 'vue-router'
 import Component from 'vue-class-component'
 import DotvueComponent from '../dotvue/DotvueComponent'
-import DotvueInitialData from '../dotvue/DotvueInitialData'
 import ListTemplate from '../views/authors/list.html'
 import ViewTemplate from '../views/authors/view.html'
 import Author from '../models/Author'
 import AuthorsRepository from '../repositories/AuthorsRepository'
 import PostList from '../components/post-list/PostList'
 
-const dataKeyList = "authors/list"
-
 @DotvueComponent(module, {
     template: ListTemplate
 })
 export class List extends Vue {
 
-    public authors = new Array<Author>();
+    public authors: Author[]
 
-    public async beforeRouteEnter(to: Route, from: Route, next: any) {
-        let initialData = new DotvueInitialData<object[]>(to, dataKeyList)
-        await initialData.Set(AuthorsRepository.all)
-        next(true)
+    public static async loadDataAsyncStatic(to: Route) {
+        return await AuthorsRepository.all()
+    }
+    public loadDataAsync(to: Route){
+        return List.loadDataAsyncStatic(to);
+    }
+
+    public static data: Author[]
+    public async beforeRouteEnter(to: Route, from: Route, next: any){
+        List.data = Author.convertAll(await List.loadDataAsyncStatic(to))
+        next()
     }
 
     public created() {
-        this.authors = Author.convertAll(DotvueInitialData.Get<Author[]>(this, dataKeyList))
+        this.authors = List.data
     }
 
 }
-
-const dataKeyView = "authors/view"
 
 @DotvueComponent(module, {
     template: ViewTemplate,
@@ -38,21 +40,28 @@ const dataKeyView = "authors/view"
 })
 export class View extends Vue {
 
-    public author = new Author();
+    public author: Author
 
-    public async beforeRouteEnter(to: Route, from: Route, next: any) {
-        let initialData = new DotvueInitialData<object>(to, dataKeyView)
-        await initialData.Set(async () => { return await AuthorsRepository.one(Number(to.params.id)) })
-        next(true)
+    public static async loadDataAsyncStatic(to: Route) {
+        return await AuthorsRepository.one(Number(to.params.id))
+    }
+    public loadDataAsync(to: Route){
+        return View.loadDataAsyncStatic(to);
     }
 
-    public async beforeRouteUpdate(to: Route, from: Route, next: any) {
-        this.author = new Author(await AuthorsRepository.one(Number(to.params.id)))
-        next(true)
+    public static data: Author
+    public async beforeRouteEnter(to: Route, from: Route, next: any){
+        View.data = new Author(await View.loadDataAsyncStatic(to))
+        next()
+    }
+
+    public async beforeRouteUpdate(to: Route, from: Route, next: any){
+        this.author = new Author(await View.loadDataAsyncStatic(to))
+        next()
     }
 
     public created() {
-        this.author = new Author(DotvueInitialData.Get<object>(this, dataKeyView))
+        this.author = View.data
     }
 
 }
